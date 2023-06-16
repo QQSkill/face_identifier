@@ -4,6 +4,13 @@ import torch
 import os
 import numpy as np
 
+BASE_DIR = '/content/drive/MyDrive/projects/ComputerVision/identifier_system_by_face'
+TRAIN_DATASET_DIR = os.path.join(BASE_DIR, 'train_dataset')
+TEST_DATASET_DIR = os.path.join(BASE_DIR, 'test_dataset')
+IMG_FOLDER = 'img'
+FACE_FOLDER = 'faces'
+EMBEDDING_FOLDER = 'embeddings'
+
 def extract_face(box, img, frame_size, margin=20):
     face_size = 160
     img_size = frame_size
@@ -42,7 +49,7 @@ def transfrom_img(img):
   img = torch.from_numpy(img)
   return img/255
 
-def extract_and_save_faces(dataset_dir):
+def extract_and_save_faces(dataset_dir, model):
   for folder in os.listdir(dataset_dir):
     img_dir = os.path.join(dataset_dir, folder, IMG_FOLDER)
     face_dir = os.path.join(dataset_dir, folder, FACE_FOLDER)
@@ -51,7 +58,7 @@ def extract_and_save_faces(dataset_dir):
     for img_file in os.listdir(img_dir):
       img_path = os.path.join(img_dir, img_file)
       input_img = cv2.imread(img_path)
-      boxes, _ = mtcnn.detect(input_img)
+      boxes, _ = model.detect(input_img)
       if boxes is not None:
           for idx, box in enumerate(boxes):
               bbox = list(map(int,box.tolist()))
@@ -64,3 +71,40 @@ def extract_and_save_faces(dataset_dir):
                   img_file = f'{img_file.split(".")[0]}.jpg'
                   face_path = os.path.join(face_dir, img_file)
                   save_img_to_file(face, face_path)
+
+def embedding_and_save(dataset_dir, model, device):
+  # Embedding face and save it
+  for folder in os.listdir(dataset_dir):
+    face_dir = os.path.join(dataset_dir, folder, FACE_FOLDER)
+    embedding_dir = os.path.join(dataset_dir, folder, EMBEDDING_FOLDER)
+    if os.path.exists(embedding_dir) != True:
+      os.mkdir(embedding_dir)
+    embeds = []
+    for face_file in os.listdir(face_dir):
+        face_path = os.path.join(face_dir, face_file)
+        try:
+            img = cv2.imread(face_path)
+        except:
+            continue
+        with torch.no_grad():
+            img = transfrom_img(img).to(device)
+            img = img.unsqueeze(0)
+            embed = model(img)
+            embeds.append(embed) #1 anh, kich thuoc [1,512]
+        if len(embeds) == 0:
+            continue
+    embedding = torch.cat(embeds).mean(0, keepdim=True) #dua ra trung binh cua 50 anh, kich thuoc [1,512]
+    embedding_path = os.path.join(embedding_dir, f'{folder}.pth')
+    torch.save(embedding, embedding_path)
+
+def prepare_data_for_training(face_detector, face_embedder, device):
+  print('PROCESSING TRAIN preparing data step')
+  extract_and_save_faces(TRAIN_DATASET_DIR, face_detector)
+  embedding_and_save(TRAIN_DATASET_DIR, face_embedder, device)
+  print('DONE TRAIN preparing data step')
+
+def prepare_data_for_testing(face_detector, face_embedder, device):
+  print('PROCESSING TEST preparing data step')
+  extract_and_save_faces(TEST_DATASET_DIR, face_detector)
+  embedding_and_save(TEST_DATASET_DIR, face_embedder, device)
+  print('DONE TEST preparing data step')
