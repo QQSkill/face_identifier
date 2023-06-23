@@ -17,7 +17,7 @@ EMBEDDING_FOLDER = 'embeddings'
 
 # Check type of device (cpu, gpu, tpu)
 device =  torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-print(device)
+print('Using device: ', device)
 
 # Initalize face detector - MTCNN
 face_detector = MTCNN(thresholds= [0.7, 0.7, 0.8] ,keep_all=True, device = device)

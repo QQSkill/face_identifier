@@ -3,6 +3,7 @@ from facenet_pytorch import MTCNN
 import torch
 import os
 import numpy as np
+from sklearn.metrics import accuracy_score
 
 BASE_DIR = '/content/drive/MyDrive/projects/ComputerVision/identifier_system_by_face'
 TRAIN_DATASET_DIR = os.path.join(BASE_DIR, 'train_dataset')
@@ -108,3 +109,69 @@ def prepare_data_for_testing(face_detector, face_embedder, device):
   extract_and_save_faces(TEST_DATASET_DIR, face_detector)
   embedding_and_save(TEST_DATASET_DIR, face_embedder, device)
   print('DONE TEST preparing data step')
+
+
+def load_embedding_dataset_for_deploy():
+  result = {'embedding': [], 'user_name': []}
+  for user in os.listdir(TRAIN_DATASET_DIR):
+      EMBEDDING_FILE = os.path.join(TRAIN_DATASET_DIR, user, EMBEDDING_FOLDER, f'{user}.pth')
+      embedding = torch.load(EMBEDDING_FILE)
+      user_name = str(user)
+      result['embedding'].append(embedding)
+      result['user_name'].append(user_name)
+  return result
+
+def inference(face, model, embedding_dataset, device, threshold=0.8):
+  local_embeds = torch.cat(embedding_dataset['embedding'])
+  names = embedding_dataset['user_name']
+  face = transfrom_img(face).to(device)
+  face = face.unsqueeze(0)
+  embed = model(face)
+  norm_diff = embed - local_embeds
+  norm_square = torch.pow(norm_diff, 2)
+  norm_score = torch.sum(norm_square, dim=1) #(1,n)
+  #norm_score = torch.sqrt(norm_score)
+  embed_idx = torch.argmin(norm_score)
+  min_dist = norm_score[embed_idx]
+  if min_dist > threshold:
+      return -1, -1
+  else:
+      return names[embed_idx], min_dist
+
+def load_dataset_for_recognition():
+  training_faces, testing_faces, training_labels, testing_labels = [], [], [], []
+  for user in os.listdir(TRAIN_DATASET_DIR):
+    faces_folder = os.path.join(TRAIN_DATASET_DIR, user, FACE_FOLDER)
+    for face in os.listdir(faces_folder):
+      face_path = os.path.join(faces_folder, face)
+      face = cv2.imread(face_path)
+      #for trainign model - not pretrained model
+      #face = cv2.resize(face, (224, 224), interpolation=cv2.INTER_AREA)
+      training_faces.append(face)
+      training_labels.append(user)
+  
+  for user in os.listdir(TEST_DATASET_DIR):
+    faces_folder = os.path.join(TEST_DATASET_DIR, user, FACE_FOLDER)
+    for face in os.listdir(faces_folder):
+      face_path = os.path.join(faces_folder, face)
+      face = cv2.imread(face_path)
+      #for trainign model - not pretrained model
+      #face = cv2.resize(face, (224, 224), interpolation=cv2.INTER_AREA)
+      testing_faces.append(face)
+      testing_labels.append(user)
+  return training_faces, testing_faces, training_labels, testing_labels
+
+def recognition_evaluation(model):
+  embedding_dataset = load_embedding_dataset_for_deploy()
+  training_faces, testing_faces, training_labels, testing_labels = load_dataset_for_recognition()
+  predicts = []
+  for face in testing_faces:
+    user, score = inference(face, model, embedding_dataset)
+    if user == -1:
+      user = 'unknown'
+    else:
+      # Using cv2.putText() method to display score
+      score = torch.round(score, decimals=4)
+    predicts.append(user)
+  acc = accuracy_score(testing_labels, predicts)
+  print('accuracy: ', acc)
