@@ -129,6 +129,7 @@ def inference(face, model, embedding_dataset, device, threshold=0.8):
   face = transfrom_img(face).to(device)
   face = face.unsqueeze(0)
   embed = model(face)
+  # Euclid distance
   norm_diff = embed - local_embeds
   norm_square = torch.pow(norm_diff, 2)
   norm_score = torch.sum(norm_square, dim=1) #(1,n)
@@ -136,9 +137,9 @@ def inference(face, model, embedding_dataset, device, threshold=0.8):
   embed_idx = torch.argmin(norm_score)
   min_dist = norm_score[embed_idx]
   if min_dist > threshold:
-      return -1, -1
+    return -1, -1
   else:
-      return names[embed_idx], min_dist
+    return names[embed_idx], min_dist
 
 def load_dataset_for_recognition():
   training_faces, testing_faces, training_labels, testing_labels = [], [], [], []
